@@ -15,11 +15,9 @@
  */
 import { fill } from "./strings.mjs";
 import { duration } from "../stats/lab-times.mjs";
-import { rankGeneral, rankWorld, avatarUrl, isHandle, WORLD_COUNT } from "../../site-theme/javascripts/guinea-run/core/hof.js";
+import { PAGE_ROWS, WORLD_COUNT } from "../../site-theme/javascripts/guinea-run/core/hof.js";
+import { COATS } from "../../site-theme/javascripts/guinea-run/core/online.js";
 import { translator } from "../../site-theme/javascripts/guinea-run/texts.js";
-
-// How many players each table of the Hall of Fame shows
-const HALL_OF_FAME_TOP = 50;
 
 const separator = (columns) => `|${columns.map(() => "---").join("|")}|`;
 const row = (cells) => `| ${cells.join(" | ")} |`;
@@ -268,72 +266,79 @@ export function statsPage({ s, text, universe, stats }) {
 }
 
 /**
- * The Guinea Run Hall of Fame: the overall top, then the top of each world.
+ * The Guinea Run Hall of Fame: the overall top, the tops of the bonuses,
+ * Pipeline Pinball and Org-Man, then the top of each world.
  *
- * board is hall-of-fame/hall-of-fame.json, which the hall-of-fame workflow
- * writes. The rankings come from the game's own core/hof.js, so the page, the
- * game and the answer on the issue agree. The world names are the game's.
- *
- * badgeHref(handle) is the badge page of a player, or null. badgeImage(handle,
- * level) is the picture of that badge, or null for a text mark.
+ * The boards live in the game's database and change at every new best, so
+ * the page holds their places only: site-theme/javascripts/hall-of-fame-page.js
+ * fills them in the reader's browser, with the game's own code
+ * (core/online.js), so the page and the game show the same boards. The words
+ * it needs (columns, world names, modes) are written here, in the page's
+ * language, in a JSON block it reads.
  */
-export function hallOfFamePage({ s, board, badgeHref, badgeImage }) {
+export function hallOfFamePage({ s }) {
   const w = s.hallOfFame;
   const t = translator(s.lang || "en");
-  const seconds = new Intl.NumberFormat(s.lang || "en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  // A handle the board holds is checked again: it is printed into HTML
-  const top = (list) => list.filter((p) => isHandle(p.handle)).slice(0, HALL_OF_FAME_TOP);
-  const avatar = (handle) =>
-    `<img src="${avatarUrl(handle, 48)}" width="24" height="24" alt="" loading="lazy" referrerpolicy="no-referrer"/>`;
-  const player = (handle) => `[${handle}](https://github.com/${handle})`;
-  const badge = (p) => {
-    if (!(p.badge > 0)) {
-      return "";
-    }
-    const alt = fill(w.badgeAlt, { level: p.badge });
-    const image = badgeImage ? badgeImage(p.handle, p.badge) : null;
-    const mark = image ? `<img src="${image}" width="24" height="24" alt="${alt}" title="${alt}"/>` : alt;
-    const href = badgeHref ? badgeHref(p.handle) : null;
-    return href ? `[${mark}](${href})` : mark;
+  const place = (board) => `<div class="gr-hof-board" data-board="${board}"><p>${w.loading}</p></div>`;
+  const words = {
+    lang: s.lang || "en",
+    top: PAGE_ROWS,
+    loading: w.loading,
+    offline: w.offline,
+    empty: w.empty,
+    worldEmpty: w.worldEmpty,
+    pinballEmpty: w.pinball.empty,
+    orgmanEmpty: w.orgman.empty,
+    seconds: w.seconds,
+    generalColumns: w.generalColumns,
+    worldColumns: w.worldColumns,
+    pinballColumns: w.pinball.columns,
+    orgmanColumns: w.orgman.columns,
+    modes: Object.fromEntries(["easy", "normal", "hard"].map((m) => [m, t(`mode_${m}`)])),
+    coats: Object.fromEntries(COATS.map((c) => [c, t(`coat_${c}`)]))
   };
-  const boss = (ms) => (typeof ms === "number" ? fill(w.seconds, { value: seconds.format(ms / 1000) }) : "-");
-
-  const lines = [`# ${w.heading}`, "", ...w.intro, ""];
-  const general = top(rankGeneral(board));
-  if (general.length === 0) {
-    lines.push(w.empty, "");
-    return lines.join("\n");
-  }
-  if (board.updatedAt) {
-    lines.push(fill(w.updated, { date: String(board.updatedAt).slice(0, 10) }), "");
-  }
-  lines.push(
+  const lines = [
+    `# ${w.heading}`,
+    "",
+    ...w.intro,
+    "",
+    w.privacy,
+    "",
+    // The words of the page script; "<" is escaped so no text can close the block
+    `<script type="application/json" id="gr-hof-words">${JSON.stringify(words).replace(/</g, "\\u003c")}</script>`,
+    "",
+    // The boards sit in one block the stylesheet makes compact on a phone
+    `<div class="gr-hof" markdown>`,
+    "",
     `## ${w.general.heading}`,
     "",
-    fill(w.general.intro, { count: HALL_OF_FAME_TOP }),
+    fill(w.general.intro, { count: PAGE_ROWS }),
     "",
-    row(w.generalColumns),
-    separator(w.generalColumns),
-    ...general.map((p, i) => row([i + 1, avatar(p.handle), player(p.handle), badge(p), p.total, p.stars])),
+    place("all"),
+    "",
+    // The bonus tables right after the total: each is one board for the whole game
+    `## ${w.pinball.heading}`,
+    "",
+    fill(w.pinball.intro, { count: PAGE_ROWS }),
+    "",
+    place("pinball"),
+    "",
+    `## ${w.orgman.heading}`,
+    "",
+    fill(w.orgman.intro, { count: PAGE_ROWS }),
+    "",
+    place("orgman"),
     "",
     `## ${w.worlds.heading}`,
     "",
-    fill(w.worlds.intro, { count: HALL_OF_FAME_TOP }),
+    fill(w.worlds.intro, { count: PAGE_ROWS }),
     ""
-  );
+  ];
   for (let n = 0; n < WORLD_COUNT; n++) {
     const title = fill(w.world, { n, name: t(`w${n}_name`) }).replace(/"/g, "'");
-    const list = top(rankWorld(board, n));
-    lines.push(`??? note "${title}"`, "");
-    const body = list.length === 0
-      ? [w.worldEmpty]
-      : [
-          row(w.worldColumns),
-          separator(w.worldColumns),
-          ...list.map((p, i) => row([i + 1, avatar(p.handle), player(p.handle), p.score, t(`mode_${p.mode}`), p.stars, boss(p.bossMs)]))
-        ];
-    lines.push(...body.map((line) => `    ${line}`), "");
+    lines.push(`??? note "${title}"`, "", `    ${place("w" + n)}`, "");
   }
+  lines.push("</div>", "");
   return lines.join("\n");
 }
 
