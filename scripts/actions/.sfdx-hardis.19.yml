@@ -1,0 +1,9 @@
+commandsPostDeploy:
+  - id: ca80e054-6e8a-4e68-b9b9-53d306be5cf5
+    label: upload data
+    type: data
+    command: ""
+    parameters:
+      sfdmuProject: HandoverItemsDataWorkspace
+    runOnlyOnceByOrg: true
+    context: all
